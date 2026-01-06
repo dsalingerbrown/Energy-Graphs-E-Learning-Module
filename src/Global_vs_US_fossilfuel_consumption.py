@@ -35,11 +35,13 @@ try:
     # Process Dates
     df_global['Date'] = pd.to_datetime(df_global['period'].astype(str), format='%Y')
     df_global['value'] = pd.to_numeric(df_global['value'], errors='coerce')
-    df_global = df_global[df_global['Date'].dt.year >= 1980]
+    
+    # --- UPDATE 1: Filter to include 1980 through 2024 ONLY ---
+    df_global = df_global[(df_global['Date'].dt.year >= 1980) & (df_global['Date'].dt.year <= 2024)]
 
     # Pivot
     global_pivot = df_global.pivot(index='Date', columns='productName', values='value')
-    print("✓ Global data loaded.")
+    print("✓ Global data loaded (1980-2024).")
     
 except Exception as e:
     print(f"Global Data Failed: {e}")
@@ -77,45 +79,50 @@ try:
     
     # 2. CONVERSION: Trillion BTU -> Quadrillion BTU
     us_annual = us_annual / 1000.0
+
+    # --- UPDATE 2: Drop any rows after 2024 ---
+    # This removes the incomplete 2025 sum
+    us_annual = us_annual[us_annual.index.year <= 2024]
     
-    print("✓ US data loaded, aggregated, and converted.")
+    print("✓ US data loaded, aggregated, converted, and trimmed to 2024.")
 
     # ---------------------------------------------------------
-    # --- VERIFICATION BLOCK (Added per request) ---
+    # --- VERIFICATION BLOCK ---
     # ---------------------------------------------------------
     print("\n" + "="*50)
     print("      DATA VERIFICATION CHECK")
     print("="*50)
 
-    # We will pick a specific year (2020) and a specific column (Natural Gas)
+    # Check 2020 (Still safe, as it is <= 2024)
     check_year = '2020'
     check_col = 'NNTCBUS' 
 
-    print(f"INSPECTING: Year {check_year} | Column '{check_col}' (Natural Gas)")
+    if check_year in us_pivot.index.strftime('%Y'):
+        print(f"INSPECTING: Year {check_year} | Column '{check_col}' (Natural Gas)")
 
-    # A. Show the 12 Monthly values from the RAW pivot (before /1000)
-    # Note: We look at 'us_pivot' here, which is the monthly data
-    monthly_data = us_pivot.loc[check_year, check_col]
-    print(f"\n1. Raw Monthly Data (Trillion BTU):\n{monthly_data}")
+        # A. Show the 12 Monthly values from the RAW pivot
+        monthly_data = us_pivot.loc[check_year, check_col]
+        print(f"\n1. Raw Monthly Data (Trillion BTU):\n{monthly_data}")
 
-    # B. Calculate manual sum of those 12 months
-    manual_sum_trillion = monthly_data.sum()
-    print(f"\n2. Manual Sum of Months: {manual_sum_trillion:,.2f} Trillion BTU")
+        # B. Calculate manual sum of those 12 months
+        manual_sum_trillion = monthly_data.sum()
+        print(f"\n2. Manual Sum of Months: {manual_sum_trillion:,.2f} Trillion BTU")
 
-    # C. Calculate manual conversion
-    manual_quad = manual_sum_trillion / 1000.0
-    print(f"3. Manual Conversion (/1000): {manual_quad:,.4f} Quadrillion BTU")
+        # C. Calculate manual conversion
+        manual_quad = manual_sum_trillion / 1000.0
+        print(f"3. Manual Conversion (/1000): {manual_quad:,.4f} Quadrillion BTU")
 
-    # D. Compare to what is inside your final 'us_annual' DataFrame
-    # Note: Accessing the specific year '2020-01-01' because of 'YS' resampling
-    code_result = us_annual.loc[f'{check_year}-01-01', check_col]
-    print(f"4. Your Code's Final Value:   {code_result:,.4f} Quadrillion BTU")
+        # D. Compare to what is inside your final 'us_annual' DataFrame
+        code_result = us_annual.loc[f'{check_year}-01-01', check_col]
+        print(f"4. Your Code's Final Value:   {code_result:,.4f} Quadrillion BTU")
 
-    # E. Verdict
-    if abs(manual_quad - code_result) < 0.0001:
-        print("\n>> STATUS: SUCCESS. The aggregation and unit conversion are correct.")
+        # E. Verdict
+        if abs(manual_quad - code_result) < 0.0001:
+            print("\n>> STATUS: SUCCESS. The aggregation and unit conversion are correct.")
+        else:
+            print("\n>> STATUS: FAILURE. The values do not match.")
     else:
-        print("\n>> STATUS: FAILURE. The values do not match.")
+        print("Verification skipped (Year 2020 not in data).")
     print("="*50 + "\n")
     # ---------------------------------------------------------
 
@@ -147,12 +154,20 @@ if not global_pivot.empty and not us_annual.empty:
             plt.plot(us_annual.index, us_annual[g['us_col']], 
                      label='US (Dashed)', color=g['color'], linestyle='--', linewidth=2)
 
-        plt.title(f"{g['fuel']} Consumption: Global vs US (Annual)", fontsize=16)
+        plt.title(f"Annual {g['fuel']} Consumption: Global vs US (1980-2024)", fontsize=16)
         plt.ylabel("Consumption (Quadrillion BTU)", fontsize=12)
         plt.xlabel("Year", fontsize=12)
-        plt.xlim(pd.Timestamp('1980-01-01'), max(global_pivot.index.max(), us_annual.index.max()))
+        
+        # --- UPDATE 3: Explicitly lock the axis to 2024 ---
+        plt.xlim(pd.Timestamp('1980-01-01'), pd.Timestamp('2024-01-01'))
+        
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.5)
+        
+        # Footer
+        plt.figtext(0.99, 0.01, 'Source: EIA International & Total Energy Data', 
+                    horizontalalignment='right', fontsize=9, color='gray', style='italic')
+
         plt.tight_layout()
         
         filename = f"compare_{g['fuel'].replace(' ', '_').lower()}.png"
