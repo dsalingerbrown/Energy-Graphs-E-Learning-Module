@@ -18,7 +18,7 @@ def get_capacity_data():
     """
     url = "https://api.eia.gov/v2/electricity/operating-generator-capacity/data"
     
-    # List of technologies to filter by (Matched to user's successful query)
+    # List of technologies to filter by 
     technologies = [
         "Coal Integrated Gasification Combined Cycle",
         "Conventional Hydroelectric",
